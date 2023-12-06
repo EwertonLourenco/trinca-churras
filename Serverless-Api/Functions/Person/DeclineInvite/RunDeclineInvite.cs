@@ -1,39 +1,43 @@
-﻿using Domain;
-using Eveneum;
-using CrossCutting;
-using Domain.Events;
-using Domain.Entities;
-using Domain.Repositories;
-using Microsoft.Azure.Functions.Worker;
+﻿using Domain.Entities; // Entidades do domínio
+using Microsoft.Azure.Functions.Worker; // Biblioteca para Azure Functions
 using Microsoft.Azure.Functions.Worker.Http;
-using static Domain.ServiceCollectionExtensions;
+using Domain.Services; // Serviços do domínio
 
 namespace Serverless_Api
 {
     public partial class RunDeclineInvite
     {
-        private readonly Person _user;
-        private readonly IPersonRepository _repository;
+        // Declaração de variáveis e serviços necessários para a função
+        private readonly Person _user; // Usuário atual
+        private readonly IPersonService _personService; // Serviço de pessoa
+        private readonly IBbqService _bbqService; // Serviço de churrasco (barbecue)
 
-        public RunDeclineInvite(Person user, IPersonRepository repository)
+        // Construtor da classe
+        public RunDeclineInvite(Person user, IPersonService personService, IBbqService bbqService)
         {
             _user = user;
-            _repository = repository;
+            _personService = personService;
+            _bbqService = bbqService;
         }
 
+        // Método da função RunDeclineInvite que é acionado por uma solicitação HTTP do tipo PUT
         [Function(nameof(RunDeclineInvite))]
         public async Task<HttpResponseData> Run([HttpTrigger(AuthorizationLevel.Function, "put", Route = "person/invites/{inviteId}/decline")] HttpRequestData req, string inviteId)
         {
-            var person = await _repository.GetAsync(_user.Id);
+            Person? person = null; // Inicializa um objeto de pessoa
 
-            if (person == null)
-                return req.CreateResponse(System.Net.HttpStatusCode.NoContent);
+            try
+            {
+                // Declina o convite para o usuário atual com base no ID do convite
+                person = await _personService.DeclineInvite(_user.Id, inviteId);
+            }
+            catch (Exception e)
+            {
+                // Em caso de exceção, retorna uma resposta indicando erro interno (código 500) com a mensagem de erro
+                return await req.CreateResponse(System.Net.HttpStatusCode.InternalServerError, new { Message = e.Message, Type = "Error" });
+            }
 
-            person.Apply(new InviteWasDeclined { InviteId = inviteId, PersonId = person.Id });
-
-            await _repository.SaveAsync(person);
-            //Implementar impacto da recusa do convite no churrasco caso ele já tivesse sido aceito antes
-
+            // Retorna uma resposta indicando sucesso (código 200 - OK) com o snapshot da pessoa atualizada
             return await req.CreateResponse(System.Net.HttpStatusCode.OK, person.TakeSnapshot());
         }
     }

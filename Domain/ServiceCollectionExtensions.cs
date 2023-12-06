@@ -9,6 +9,7 @@ using Domain.Repositories;
 using Microsoft.Azure.Cosmos;
 using System.Collections.Generic;
 using Microsoft.Extensions.DependencyInjection;
+using Domain.Services;
 
 namespace Domain
 {
@@ -61,8 +62,10 @@ namespace Domain
         }
 
         public static IServiceCollection AddRepositoriesDependencies(this IServiceCollection services)
-            => services.AddTransient<IBbqRepository, BbqRepository>()
-            .AddTransient<IPersonRepository, PersonRepository>();
+           => services.AddTransient<IBbqRepository, BbqRepository>()
+           .AddTransient<IPersonRepository, PersonRepository>()
+           .AddTransient<IPersonService, PersonService>()
+           .AddTransient<IBbqService, BbqService>();
 
         private async static Task CreateIfNotExists(this CosmosClient client, string database, string collection)
         {
@@ -79,7 +82,11 @@ namespace Domain
             new Person { Id = "171f9858-ddb1-4adf-886b-2ea36e0f0644", Name = "Marcos Oliveira", IsCoOwner = true },
             new Person { Id = "3f74e6bd-11b2-4d48-a294-239a7a2ce7d5", Name = "Gustavo Sanfoninha", IsCoOwner = true },
             new Person { Id = "795fc8f2-1473-4f19-b33e-ade1a42ed123", Name = "Alexandre Morales", IsCoOwner = false },
-            new Person { Id = "addd0967-6e16-4328-bab1-eec63bf31968", Name = "Leandro Espera", IsCoOwner = false }
+            new Person { Id = "addd0967-6e16-4328-bab1-eec63bf31968", Name = "Leandro Espera", IsCoOwner = false },
+            new Person { Id = "7cb80a2c-a8bc-4db5-af65-0398ea534451", Name = "Igor Melo", IsCoOwner = false },
+            new Person { Id = "f65b5682-df12-4642-9162-11ccc0121a88", Name = "Anna Cunha", IsCoOwner = false },
+            new Person { Id = "5a7cc995-beae-4f16-b764-fbe1c43985b5", Name = "Arthur Ribeiro", IsCoOwner = false },
+            new Person { Id = "9a9bb4f1-a218-4297-85d0-575a155aeb43", Name = "Lucas Ferreira", IsCoOwner = false }
         };
     }
 }

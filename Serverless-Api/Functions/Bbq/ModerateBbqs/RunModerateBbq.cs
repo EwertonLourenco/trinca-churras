@@ -1,47 +1,43 @@
-using CrossCutting;
-using Domain.Entities;
-using Domain.Events;
-using Domain.Repositories;
-using Microsoft.Azure.Functions.Worker;
+using Domain.Entities; // Entidades do domínio
+using Domain.Services; // Serviços do domínio
+using Microsoft.Azure.Functions.Worker; // Biblioteca para Azure Functions
 using Microsoft.Azure.Functions.Worker.Http;
 
 namespace Serverless_Api
 {
     public partial class RunModerateBbq
     {
-        private readonly SnapshotStore _snapshots;
-        private readonly IPersonRepository _persons;
-        private readonly IBbqRepository _repository;
+        // Declaração de variáveis e serviços necessários para a função
+        private readonly IPersonService _personService; // Serviço de pessoa
+        private readonly IBbqService _bbqService; // Serviço de churrasco (barbecue)
 
-        public RunModerateBbq(IBbqRepository repository, SnapshotStore snapshots, IPersonRepository persons)
+        // Construtor da classe
+        public RunModerateBbq(IBbqService bbqService, IPersonService personService)
         {
-            _persons = persons;
-            _snapshots = snapshots;
-            _repository = repository;
+            _bbqService = bbqService;
+            _personService = personService;
         }
 
+        // Método da função RunModerateBbq que é acionado por uma solicitação HTTP do tipo PUT
         [Function(nameof(RunModerateBbq))]
         public async Task<HttpResponseData> Run([HttpTrigger(AuthorizationLevel.Function, "put", Route = "churras/{id}/moderar")] HttpRequestData req, string id)
         {
-            var moderationRequest = await req.Body<ModerateBbqRequest>();
-
-            var bbq = await _repository.GetAsync(id);
-
-            bbq.Apply(new BbqStatusUpdated(moderationRequest.GonnaHappen, moderationRequest.TrincaWillPay));
-
-            var lookups = await _snapshots.AsQueryable<Lookups>("Lookups").SingleOrDefaultAsync();
-
-            foreach (var personId in lookups.PeopleIds)
+            try
             {
-                var person = await _persons.GetAsync(personId);
-                var @event = new PersonHasBeenInvitedToBbq(bbq.Id, bbq.Date, bbq.Reason);
-                person.Apply(@event);
-                await _persons.SaveAsync(person);
+                // Recebe e desserializa o corpo da requisição HTTP em um objeto ModerateBbqRequest
+                var moderationRequest = await req.Body<ModerateBbqRequest>();
+
+                // Modera o churrasco (barbecue) com base nos dados recebidos
+                Bbq? bbq = await _bbqService.Moderate(id, moderationRequest.GonnaHappen, moderationRequest.TrincaWillPay);
+
+                // Retorna uma resposta indicando sucesso (código 200 - OK) e o snapshot do churrasco modificado
+                return await req.CreateResponse(System.Net.HttpStatusCode.OK, bbq.TakeSnapshot());
             }
-
-            await _repository.SaveAsync(bbq);
-
-            return await req.CreateResponse(System.Net.HttpStatusCode.OK, bbq.TakeSnapshot());
+            catch (Exception e)
+            {
+                // Em caso de exceção, retorna uma resposta indicando erro interno (código 500) com a mensagem de erro
+                return await req.CreateResponse(System.Net.HttpStatusCode.InternalServerError, new { Message = e.Message, Type = "Error" });
+            }
         }
     }
 }

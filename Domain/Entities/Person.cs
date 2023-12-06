@@ -30,7 +30,7 @@ namespace Domain.Entities
                 Status = InviteStatus.Pending
             });
         }
-
+        
         public void When(InviteWasAccepted @event)
         {
             var invite = Invites.FirstOrDefault(x => x.Id == @event.InviteId);

@@ -1,54 +1,54 @@
-using Eveneum;
 using System.Net;
-using CrossCutting;
-using Domain.Events;
-using Domain.Entities;
-using Microsoft.Azure.Functions.Worker;
+using CrossCutting; // Biblioteca para funcionalidades auxiliares
+using Domain.Entities; // Entidades do domínio
+using Microsoft.Azure.Functions.Worker; // Biblioteca para Azure Functions
 using Microsoft.Azure.Functions.Worker.Http;
+using Domain.Services; // Serviços do domínio
 
 namespace Serverless_Api
 {
     public partial class RunCreateNewBbq
     {
-        private readonly Person _user;
-        private readonly SnapshotStore _snapshots;
-        private readonly IEventStore<Bbq> _bbqsStore;
-        private readonly IEventStore<Person> _peopleStore;
-        public RunCreateNewBbq(IEventStore<Bbq> eventStore, IEventStore<Person> peopleStore, SnapshotStore snapshots, Person user)
+        // Declaração de variáveis e serviços necessários para a função
+        private readonly Person _user; // Usuário atual
+        private readonly SnapshotStore _snapshots; // Armazenamento de snapshots
+        private readonly IPersonService _personService; // Serviço de pessoa
+        private readonly IBbqService _bbqService; // Serviço de churrasco (barbecue)
+
+        // Construtor da classe
+        public RunCreateNewBbq(IPersonService personService, IBbqService bbqService, SnapshotStore snapshots, Person user)
         {
             _user = user;
             _snapshots = snapshots;
-            _bbqsStore = eventStore;
-            _peopleStore = peopleStore;
+            _personService = personService;
+            _bbqService = bbqService;
         }
 
+        // Método da função RunCreateNewBbq que é acionado por uma solicitação HTTP
         [Function(nameof(RunCreateNewBbq))]
         public async Task<HttpResponseData> Run([HttpTrigger(AuthorizationLevel.Function, "post", Route = "churras")] HttpRequestData req)
         {
-            var input = await req.Body<NewBbqRequest>();
-
-            if (input == null)
+            try
             {
-                return await req.CreateResponse(HttpStatusCode.BadRequest, "input is required.");
+                // Recebe e desserializa o corpo da requisição HTTP em um objeto NewBbqRequest
+                var input = await req.Body<NewBbqRequest>();
+                if (input == null)
+                    return await req.CreateResponse(HttpStatusCode.BadRequest, "input is required."); // Retorna um erro se o corpo da requisição estiver vazio
+
+                // Cria um novo churrasco (barbecue) com base nos dados recebidos
+                Bbq? bbq = await _bbqService.CreateNew(input.Date, input.Reason, input.IsTrincasPaying);
+
+                // Gera um snapshot do churrasco criado
+                var churrasSnapshot = bbq.TakeSnapshot();
+
+                // Retorna uma resposta indicando sucesso (código 201 - Created) e o snapshot do churrasco
+                return await req.CreateResponse(HttpStatusCode.Created, churrasSnapshot);
             }
-
-            var churras = new Bbq();
-            churras.Apply(new ThereIsSomeoneElseInTheMood(Guid.NewGuid(), input.Date, input.Reason, input.IsTrincasPaying));
-
-            await _bbqsStore.WriteToStream(churras.Id, churras.Changes.Select(evento => new EventData(churras.Id, evento, new { CreatedBy = _user.Id }, churras.Version, DateTime.Now.ToString())).ToArray(), expectedVersion: churras.Version == 0 ? null : churras.Version);
-
-            var churrasSnapshot = churras.TakeSnapshot();
-
-            var Lookups = await _snapshots.AsQueryable<Lookups>("Lookups").SingleOrDefaultAsync();
-
-            foreach (var personId in Lookups.ModeratorIds)
+            catch (Exception e)
             {
-                var header = await _peopleStore.ReadHeader(personId);
-                var @event = new PersonHasBeenInvitedToBbq(churras.Id, churras.Date, churras.Reason);
-                await _peopleStore.WriteToStream(personId, new[] { new EventData(personId, @event, new { CreatedBy = _user.Id }, header.StreamHeader.Version, DateTime.Now.ToString()) }, expectedVersion: header.StreamHeader.Version == 0 ? null : header.StreamHeader.Version);
+                // Em caso de exceção, retorna uma resposta indicando erro interno (código 500) com a mensagem de erro
+                return await req.CreateResponse(System.Net.HttpStatusCode.InternalServerError, new { Message = e.Message, Type = "Error" });
             }
-
-            return await req.CreateResponse(HttpStatusCode.Created, churrasSnapshot);
         }
     }
 }
